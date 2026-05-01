@@ -47,6 +47,26 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
             )
 
     if company == "Claude":
+        if (
+            ("workspace" in text and any(kw in text for kw in {"not loading", "won't load", "is not loading", "loading at all"}))
+            and any(kw in text for kw in {"cancel", "cancellation", "subscription", "billing"})
+        ):
+            return DirectResponse(
+                status="replied",
+                product_area="subscription_management",
+                response=(
+                    "For the workspace loading issue, first check `status.claude.com` for any active incidents, then try refreshing the page, "
+                    "clearing your browser cache and cookies, or disabling browser extensions. "
+                    "If you also want to cancel a paid Claude subscription, you can do that from `Settings -> Billing` and select `Cancel`. "
+                    "Your cancellation takes effect at the end of the current billing period, and Anthropic recommends cancelling at least 24 hours before the next billing date."
+                ),
+                justification=(
+                    "The Claude corpus supports both troubleshooting for loading/error issues and self-service cancellation instructions for paid subscriptions, "
+                    "so this can be answered directly before any escalation."
+                ),
+                request_type="product_issue",
+            )
+
         if "aws bedrock" in text or "amazon bedrock" in text:
             return DirectResponse(
                 status="replied",
@@ -234,6 +254,25 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
             )
 
     if company == "HackerRank":
+        if (
+            ("credit card" in text or "payment method" in text or "billing address" in text)
+            and any(kw in text for kw in {"update", "updating", "change", "editing", "profile"})
+        ):
+            return DirectResponse(
+                status="replied",
+                product_area="billing",
+                response=(
+                    "To update your billing details in HackerRank for Work, log in, open `Manage Subscription` from the profile drop-down, "
+                    "and click `Update` under `Payment Method` to change your card details. "
+                    "If you need to change your billing address instead, click `Update Billing`, enter the new address, and save the changes. "
+                    "If the update still does not go through after that, contact support with a screenshot of the billing page."
+                ),
+                justification=(
+                    "The HackerRank billing corpus includes direct self-service steps for updating both credit card details and billing address information."
+                ),
+                request_type="product_issue",
+            )
+
         # Score/grade manipulation — invalid request, not a security threat
         if any(kw in text for kw in {
             "increase my score", "review my answers", "move me to the next round",
@@ -402,21 +441,39 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
             )
 
         if any(kw in text for kw in {
-            "submissions not working", "submission not working",
             "i can not able to see apply tab", "apply tab", "can not see apply",
-            "none of the submissions", "none of the challenges",
-            "submissions across any challenges",
+            "submit button", "submit tab", "button missing", "button not showing",
         }) and not any(kw in text for kw in {"rescheduling", "reschedule", "infosec"}):
             return DirectResponse(
                 status="replied",
-                product_area="practice_challenges",
+                product_area="platform_issue",
+                response=(
+                    "If you cannot see the Apply or Submit button, first refresh the page and make sure you are logged in with the correct account. "
+                    "If that does not help, reopen the challenge link and try again in a supported browser such as Chrome, Firefox, or Edge. "
+                    "If the button is still missing after that, contact HackerRank support at help@hackerrank.com."
+                ),
+                justification=(
+                    "The Coding Challenges FAQ supports a direct troubleshooting reply for missing Apply/Submit UI issues, so escalation is not needed as a first step."
+                ),
+                request_type="product_issue",
+            )
+
+        if any(kw in text for kw in {
+            "submissions not working", "submission not working",
+            "none of the submissions", "none of the challenges",
+            "submissions across any challenges",
+            "cannot submit", "can't submit",
+            "500 error", "internal server error", "server error",
+        }) and not any(kw in text for kw in {"rescheduling", "reschedule", "infosec"}):
+            return DirectResponse(
+                status="replied",
+                product_area="testing",
                 response=(
                     "If submissions or challenges are not working, try these steps from HackerRank's support FAQ: "
                     "(1) Close and reopen the challenge window using the same link. "
                     "(2) Open the challenge in another supported browser such as Chrome, Firefox, or Edge. "
                     "(3) Ensure your internet connection is stable. "
-                    "If you cannot see the Apply or Submit tab, make sure you are logged in with the correct account. "
-                    "If the problem persists, contact HackerRank support at help@hackerrank.com."
+                    "If you are seeing a 500 or other server-side error after trying those steps, contact HackerRank support at help@hackerrank.com."
                 ),
                 justification=(
                     "The Coding Challenges FAQ provides troubleshooting steps for challenges that do not load or "

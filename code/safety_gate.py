@@ -56,14 +56,9 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
         if "ban the seller" in text or "refund" in text:
             response = (
                 "Hi,\n\n"
-                "For payment disputes with a merchant (wrong product, unresponsive seller), "
-                "the correct process is:\n\n"
-                "1. Contact your card-issuing bank directly — use the number on the back of your Visa card "
-                "or visit their website to file a formal dispute/chargeback.\n"
-                "2. Your bank will investigate and can reverse the charge under Visa's dispute resolution rules.\n"
-                "3. Visa itself does not directly process individual merchant bans; "
-                "this is handled through the chargeback process via your issuing bank.\n\n"
-                "Our team is escalating this so a payments specialist can confirm next steps for your specific case."
+                "Visa cannot directly ban a merchant or issue the refund itself. "
+                "Please contact your card-issuing bank using the number on the back of your card to file a dispute or chargeback. "
+                "Your bank can investigate the transaction and advise on next steps."
             )
             justification = "Escalated due to financial transaction and dispute resolution requiring manual verification by a payments specialist."
         else:

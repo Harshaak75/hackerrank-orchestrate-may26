@@ -28,15 +28,13 @@ COMPANY_DATA_DIRS = {
 }
 
 OUTPUT_COLUMNS = [
-    "issue",
-    "subject",
-    "company",
-    "response",
-    "product_area",
-    "status",
-    "request_type",
-    "justification",
-    "confidence_score",
+    "Issue",
+    "Subject",
+    "Company",
+    "Response",
+    "Product Area",
+    "Status",
+    "Request Type",
 ]
 
 DANGER_KEYWORDS = [

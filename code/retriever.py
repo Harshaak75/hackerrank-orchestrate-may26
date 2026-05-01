@@ -142,9 +142,9 @@ def _score_document(document: SupportDocument, tokens: list[str]) -> tuple[int, 
             best_excerpt_score = window_score
 
     if not best_excerpt:
-        best_excerpt = document.content[:600].strip()
+        best_excerpt = document.content[:1000].strip()
 
-    excerpt = re.sub(r"\s+", " ", best_excerpt).strip()[:700]
+    excerpt = re.sub(r"\s+", " ", best_excerpt).strip()[:2500]
     score += max(best_excerpt_score, 0) * 5
     score -= len(document.content) // 4000
     if document.title.lower() in {"hackerrank knowledge base", "claude help center"}:

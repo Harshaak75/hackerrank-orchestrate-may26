@@ -35,6 +35,39 @@ CACHE_PATH = REPO_ROOT / "support_tickets" / "response_cache.jsonl"
 SIMILARITY_THRESHOLD = 0.65  # Jaccard coefficient threshold
 
 
+def _cacheable_result(result: dict) -> bool:
+    """Only cache results that are strong enough to reuse safely."""
+    status = (result.get("status") or "").strip().lower()
+    justification = (result.get("justification") or "").lower()
+    response = (result.get("response") or "").lower()
+
+    if status != "replied":
+        return False
+    if "[cache hit" in justification:
+        return False
+    if any(
+        phrase in justification
+        for phrase in {
+            "no clear documentation",
+            "did not provide a specific enough answer",
+            "provided generic guidance",
+            "low confidence",
+            "fallback",
+        }
+    ):
+        return False
+    if any(
+        phrase in response
+        for phrase in {
+            "general troubleshooting steps",
+            "specialist will follow up",
+            "needs specialist review",
+        }
+    ):
+        return False
+    return True
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Token helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -112,6 +145,8 @@ class ResponseCache:
 
         if best_score >= self.threshold and best_entry is not None:
             result = best_entry["result"].copy()
+            if not _cacheable_result(result):
+                return None
             result["justification"] = (
                 f"[CACHE HIT: similarity={best_score:.2f}, "
                 f"original='{best_entry.get('issue_preview', '')[:60]}'] "
@@ -124,8 +159,7 @@ class ResponseCache:
     def store(self, issue: str, subject: str, company: str, result: dict) -> None:
         """Persist a new result entry to the cache (in-memory + disk)."""
         tokens = list(_tokenize(f"{subject} {issue}"))
-        # Don't cache entries that were themselves cache hits (avoid poisoning)
-        if "[CACHE HIT" in result.get("justification", ""):
+        if not _cacheable_result(result):
             return
         entry = {
             "company": company,

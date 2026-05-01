@@ -163,10 +163,12 @@ def build_prompt(issue: str, subject: str, company: str, retrieval_result: Retri
         )
 
     prompt_parts = [
-        "You are a careful support triage agent.",
-        "Use only the retrieved support corpus excerpts below.",
-        "If the issue is sensitive, unsupported, or requires account-specific action, choose escalated.",
-        "Never promise actions that the corpus does not support.",
+        "You are a helpful and empathetic customer support agent.",
+        "You MUST speak in the first person ('we', 'us', 'our team'). NEVER refer to 'the corpus', 'the documentation', 'the system', or 'the AI'. Do not mention that you searched for an answer.",
+        "If a ticket describes a bug, a UI issue, or a general question, you MUST provide troubleshooting steps and choose 'replied'.",
+        "Only choose 'escalated' if the issue involves fraud, stolen cards, or requires an agent to manually process a refund or account change. Never escalate bugs or UI issues immediately.",
+        "Use the retrieved excerpts below to inform your answer.",
+        "Never promise actions that you cannot verify.",
         "Return only valid JSON with these keys: status, product_area, response, justification, request_type, confidence_score.",
         "Allowed status values: replied, escalated.",
         "Allowed request_type values: product_issue, feature_request, bug, invalid.",
@@ -176,16 +178,12 @@ def build_prompt(issue: str, subject: str, company: str, retrieval_result: Retri
     
     if intents and len(intents) > 1:
         prompt_parts.append(
-            f"Detected intents: {', '.join(intents)}. The user has asked multiple questions or raised multiple issues. "
-            "You MUST properly divide and address all of them by combining the response if possible, "
-            "or pick the highest risk intent (e.g. security over general questions) to escalate."
+            f"Detected intents: {', '.join(intents)}. Address all issues seamlessly in a single response, or escalate the highest risk intent."
         )
 
     if is_frustrated:
         prompt_parts.append(
-            "VIP URGENCY: The user is highly frustrated or upset. You MUST begin your response with "
-            "a highly empathetic and professional apology acknowledging their frustration before addressing the issue. "
-            "Note: Frustration alone does NOT require escalation. Answer normally if possible."
+            "VIP URGENCY: The user is highly frustrated. Begin your response with a natural, empathetic apology (e.g. 'Hi, I sincerely apologize for the frustration...') before addressing their issue."
         )
 
     prompt_parts.extend([
@@ -350,7 +348,7 @@ def _strong_retrieval_match(issue: str, subject: str, retrieval_result: Retrieva
 
 def _looks_like_replyable_case(issue: str, subject: str, request_type: str) -> bool:
     text = f"{subject} {issue}".lower()
-    if request_type in {"invalid", "bug"}:
+    if request_type in {"invalid"}:
         return False
     if any(keyword in text for keyword in ACCOUNT_SPECIFIC_KEYWORDS):
         return False
@@ -370,6 +368,7 @@ def _fallback_from_retrieval(
     request_type: str,
     failure_reason: str,
     intents: list[str] = None,
+    is_frustrated: bool = False,
 ) -> dict[str, str]:
     if intents is None:
         intents = []
@@ -380,12 +379,18 @@ def _fallback_from_retrieval(
     if any(kw in text for kw in {"payment", "billing", "money", "refund", "charge", "order id"}):
         product_area = "billing"
 
+    apology = "We sincerely apologize for the frustration and inconvenience this has caused you. " if is_frustrated else ""
+
     if not top_match or top_match.score < 150:
         if company == "Visa" and any(kw in text for kw in {"refund", "ban", "money back", "merchant"}):
             return {
                 "status": "escalated",
                 "product_area": "payments",
-                "response": "Visa cannot directly force refunds or ban merchants. Please contact your issuing bank to initiate a chargeback. This case is escalated for further review.",
+                "response": (
+                    f"Hi,\n\n{apology}"
+                    "Visa cannot directly force refunds or ban merchants. Please contact your issuing bank using the number on the back of your card to initiate a chargeback. "
+                    "I am escalating this case for further review to ensure everything is handled properly."
+                ),
                 "justification": "Escalated to payments specialist with partial chargeback guidance.",
                 "request_type": request_type,
                 "confidence_score": 0.85,
@@ -394,15 +399,11 @@ def _fallback_from_retrieval(
             "status": "escalated",
             "product_area": product_area,
             "response": (
-                "Hi,\n\n"
-                "Here are some general troubleshooting steps you can try: clearing your cache, checking your network connection, or refreshing the page. "
-                "Since we could not find a matching answer in our support documentation "
-                "for your specific issue, our support team will need to review this.\n\n"
-                f"A {product_area.replace('_', ' ')} specialist will follow up with you shortly."
+                f"Hi,\n\n{apology}"
+                f"I want to make sure you get the best possible help with this issue. I am escalating your request directly to our {product_area.replace('_', ' ')} specialists so they can investigate further and provide you with a resolution."
             ),
             "justification": (
-                "Escalated to human support because no clear documentation was found "
-                "to automatically resolve the issue with high confidence. Provided general troubleshooting guidance."
+                f"[FALLBACK: {failure_reason}] Escalated to human support because no clear documentation was found to automatically resolve the issue with high confidence."
                 + (f" Handled multiple intents: {', '.join(intents)} (prioritized highest risk)." if len(intents) > 1 else "")
             ),
             "request_type": request_type,
@@ -410,20 +411,15 @@ def _fallback_from_retrieval(
         }
 
     if not _strong_retrieval_match(issue=issue, subject=subject, retrieval_result=retrieval_result):
-        top_title = top_match.title if top_match else "the support documentation"
         return {
             "status": "escalated",
             "product_area": product_area,
             "response": (
-                "Hi,\n\n"
-                "As a first step, we recommend checking the standard UI elements, clearing your browser cache, or refreshing the page.\n\n"
-                f"We found related {company} support documentation ({top_title}), but since it did not "
-                "provide a specific enough answer to resolve your request confidently, we are escalating this.\n\n"
-                f"A {product_area.replace('_', ' ')} specialist will follow up with more targeted guidance."
+                f"Hi,\n\n{apology}"
+                f"I want to make sure you get the exact steps you need. I'm routing your ticket directly to a {product_area.replace('_', ' ')} specialist who will follow up with you shortly."
             ),
             "justification": (
-                "Escalated because retrieval found related articles but none matched specifically "
-                "enough to produce a confident direct response safely. Provided generic guidance first."
+                f"[FALLBACK: {failure_reason}] Escalated because retrieval found related articles but none matched specifically enough to produce a confident direct response."
                 + (f" Handled multiple intents: {', '.join(intents)} (prioritized highest risk)." if len(intents) > 1 else "")
             ),
             "request_type": request_type,
@@ -435,14 +431,12 @@ def _fallback_from_retrieval(
             "status": "escalated",
             "product_area": product_area,
             "response": (
-                "Hi,\n\n"
-                "Since this request involves account-specific details, billing verification, or "
-                "an action that requires identity confirmation, our support team must handle it directly.\n\n"
+                f"Hi,\n\n{apology}"
+                f"Since this request involves account-specific details, our support team must handle it directly. "
                 f"A {product_area.replace('_', ' ')} specialist will follow up with you shortly to assist further."
             ),
             "justification": (
-                "Escalated because this request involves account-specific, billing, or "
-                "sensitive details that cannot be safely resolved from the public support corpus alone."
+                f"[FALLBACK: {failure_reason}] Escalated because this request involves account-specific, billing, or sensitive details."
                 + (f" Handled multiple intents: {', '.join(intents)} (prioritized highest risk)." if len(intents) > 1 else "")
             ),
             "request_type": request_type,
@@ -453,7 +447,8 @@ def _fallback_from_retrieval(
         "status": "replied",
         "product_area": product_area,
         "response": (
-                "Here is the relevant guidance from our support documentation:\n\n"
+                f"Hi,\n\n{apology}"
+                "Here are the steps to help resolve this:\n\n"
                 f"{ _sanitize_excerpt(top_match.excerpt) }"
         ),
         "justification": (

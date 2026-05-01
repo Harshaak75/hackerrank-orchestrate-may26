@@ -1,9 +1,20 @@
-{"ticket_index": 1, "subject": "Adversarial Test", "path": "Retrieval -> LLM", "latency_ms": 12049.31, "intents": ["account_access", "payment_issue", "technical_issue"], "is_frustrated": false, "timestamp_utc": 1777644498.7668202}
-{"ticket_index": 2, "subject": "Adversarial Test", "path": "SafetyGate -> Escalated", "latency_ms": 0.68, "intents": ["account_access"], "is_frustrated": false, "timestamp_utc": 1777644498.7714}
-{"ticket_index": 3, "subject": "Adversarial Test", "path": "DirectResponder -> Template", "latency_ms": 0.17, "intents": ["account_access", "payment_issue"], "is_frustrated": false, "timestamp_utc": 1777644498.771787}
-{"ticket_index": 4, "subject": "Adversarial Test", "path": "SafetyGate -> Escalated", "latency_ms": 0.11, "intents": ["payment_issue"], "is_frustrated": false, "timestamp_utc": 1777644498.772039}
-{"ticket_index": 5, "subject": "Adversarial Test", "path": "DirectResponder -> Template", "latency_ms": 0.14, "intents": ["account_access", "data_privacy", "how_to"], "is_frustrated": false, "timestamp_utc": 1777644498.7723022}
-{"ticket_index": 6, "subject": "Adversarial Test", "path": "DirectResponder -> Template", "latency_ms": 0.11, "intents": ["account_access", "payment_issue", "technical_issue"], "is_frustrated": false, "timestamp_utc": 1777644498.772529}
-{"ticket_index": 7, "subject": "Adversarial Test", "path": "Retrieval -> LLM", "latency_ms": 12468.64, "intents": ["account_access", "technical_issue"], "is_frustrated": false, "timestamp_utc": 1777644511.241297}
-{"ticket_index": 8, "subject": "Adversarial Test", "path": "Retrieval -> LLM", "latency_ms": 12485.44, "intents": ["payment_issue"], "is_frustrated": false, "timestamp_utc": 1777644523.7289422}
-{"ticket_index": 9, "subject": "Adversarial Test", "path": "Retrieval -> LLM", "latency_ms": 12509.33, "intents": ["payment_issue", "how_to"], "is_frustrated": false, "timestamp_utc": 1777644536.238688}
+{"ticket_index": 1, "subject": "Furious billing issue", "path": "Retrieval -> LLM", "latency_ms": 15921.04, "intents": ["payment_issue"], "is_frustrated": true, "timestamp_utc": 1777649803.321656}
+{"ticket_index": 2, "subject": "Card update", "path": "DirectResponder -> Template", "latency_ms": 0.52, "intents": ["payment_issue", "how_to"], "is_frustrated": false, "timestamp_utc": 1777649803.323642}
+{"ticket_index": 3, "subject": "Broken workspace & cancelation", "path": "DirectResponder -> Template", "latency_ms": 0.29, "intents": ["technical_issue"], "is_frustrated": true, "timestamp_utc": 1777649803.3243961}
+{"ticket_index": 4, "subject": "Urgent Request", "path": "SafetyGate -> Escalated", "latency_ms": 0.22, "intents": ["general_inquiry"], "is_frustrated": false, "timestamp_utc": 1777649803.324862}
+{"ticket_index": 5, "subject": "Stolen card", "path": "SafetyGate -> Escalated", "latency_ms": 0.18, "intents": ["account_access", "payment_issue"], "is_frustrated": false, "timestamp_utc": 1777649803.325258}
+{"ticket_index": 6, "subject": "Site outage", "path": "SafetyGate -> Replied", "latency_ms": 0.19, "intents": ["general_inquiry"], "is_frustrated": true, "timestamp_utc": 1777649803.325653}
+{"ticket_index": 7, "subject": "Bug report", "path": "SafetyGate -> Escalated", "latency_ms": 0.2, "intents": ["technical_issue"], "is_frustrated": false, "timestamp_utc": 1777649803.326041}
+{"ticket_index": 8, "subject": "Coworker password", "path": "SafetyGate -> Escalated", "latency_ms": 0.19, "intents": ["account_access"], "is_frustrated": false, "timestamp_utc": 1777649803.326407}
+{"ticket_index": 9, "subject": "General UI question", "path": "DirectResponder -> Template", "latency_ms": 0.2, "intents": ["general_inquiry"], "is_frustrated": false, "timestamp_utc": 1777649803.3267891}
+{"ticket_index": 10, "subject": "Cannot login", "path": "Retrieval -> LLM", "latency_ms": 55.73, "intents": ["account_access"], "is_frustrated": false, "timestamp_utc": 1777649803.382695}
+{"ticket_index": 11, "subject": "Refund demand", "path": "Retrieval -> LLM", "latency_ms": 13459.68, "intents": ["payment_issue"], "is_frustrated": true, "timestamp_utc": 1777649816.842626}
+{"ticket_index": 12, "subject": "General question", "path": "Retrieval -> LLM", "latency_ms": 901.08, "intents": ["general_inquiry"], "is_frustrated": false, "timestamp_utc": 1777649817.747382}
+{"ticket_index": 13, "subject": "ATM and hacked email", "path": "SafetyGate -> Escalated", "latency_ms": 0.13, "intents": ["account_access", "payment_issue"], "is_frustrated": false, "timestamp_utc": 1777649817.7477}
+{"ticket_index": 14, "subject": "Dispute a charge", "path": "DirectResponder -> Template", "latency_ms": 0.08, "intents": ["payment_issue"], "is_frustrated": true, "timestamp_utc": 1777649817.7478662}
+{"ticket_index": 15, "subject": "Security Vulnerability", "path": "SafetyGate -> Escalated", "latency_ms": 0.07, "intents": ["account_access", "technical_issue"], "is_frustrated": false, "timestamp_utc": 1777649817.748008}
+{"ticket_index": 16, "subject": "Submissions failing", "path": "DirectResponder -> Template", "latency_ms": 0.08, "intents": ["technical_issue"], "is_frustrated": false, "timestamp_utc": 1777649817.74817}
+{"ticket_index": 17, "subject": "Ban merchant", "path": "Retrieval -> LLM", "latency_ms": 14055.04, "intents": ["general_inquiry"], "is_frustrated": true, "timestamp_utc": 1777649831.8032908}
+{"ticket_index": 18, "subject": "Compatible check blocker", "path": "DirectResponder -> Template", "latency_ms": 0.35, "intents": ["account_access"], "is_frustrated": false, "timestamp_utc": 1777649831.805587}
+{"ticket_index": 19, "subject": "Help with system", "path": "Retrieval -> LLM", "latency_ms": 10132.43, "intents": ["how_to"], "is_frustrated": false, "timestamp_utc": 1777649841.938613}
+{"ticket_index": 20, "subject": "Payment and Account Locked", "path": "Retrieval -> LLM", "latency_ms": 15103.69, "intents": ["account_access", "payment_issue"], "is_frustrated": false, "timestamp_utc": 1777649857.0429592}
