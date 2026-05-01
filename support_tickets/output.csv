@@ -1,1 +1,65 @@
-issue,subject,company,response,product_area,status,request_type,justification
+issue,subject,company,response,product_area,status,request_type,justification,confidence_score
+I notice that people I assigned the test in October of 2025 have not received new tests. How long do the tests stay active in the system.,Test Active in the system,HackerRank,"Hi,
+
+We found related HackerRank support documentation (HackerRank Glossary), but since it did not provide a specific enough answer to resolve your request confidently, we are escalating this.
+
+A getting started specialist will follow up with more targeted guidance.",getting_started,escalated,product_issue,"Escalated because retrieval found related articles but none matched specifically enough to produce a grounded, safe direct reply without risking a wrong answer.",0.85
+site is down & none of the pages are accessible,,Unknown,We're sorry you're experiencing access issues. Our engineering team monitors platform status continuously. Please check our status page for real-time updates on any active incidents.,platform_reliability,escalated,bug,Escalated due to reports of a severe platform outage or major reliability incident.,0.85
+"I'm noticing that you all have many default versions of roles. (e.g. front end developer for react, angular, vue.js, etc.) What do you consider best practice 
+for when to create a new test versus create a variant of the test? What are the advantages and disadvantages of using variants?","When should I create a variant versus
+ have a different test?",HackerRank,"Hi,
+
+We found related HackerRank support documentation (HackerRank Glossary), but since it did not provide a specific enough answer to resolve your request confidently, we are escalating this.
+
+A getting started specialist will follow up with more targeted guidance.",getting_started,escalated,product_issue,"Escalated because retrieval found related articles but none matched specifically enough to produce a grounded, safe direct reply without risking a wrong answer.",0.85
+"Hi there
+
+We have sent a candidate a Hackerrank assessment already, but we have been informed that they require extra time. As the assessment is 105 minutes, they need an extra 50% extra time added (so around 53 minutes) in addition.
+
+Please can you provide step-by-step instruction on how we are to reinvite them.
+
+Do we find their profile in 'Candidates' , put in Add time 53 minutes and then click 'reinvite' and send the email? The email to the candidate says 105 minutes as the duration though still so not sure how we can check?
+
+Thanks","How to reinvite candidate to Hackerrank 
+assessment and add extra time",HackerRank,"Hi,
+
+We found related HackerRank support documentation (HackerRank Glossary), but since it did not provide a specific enough answer to resolve your request confidently, we are escalating this.
+
+A getting started specialist will follow up with more targeted guidance.",getting_started,escalated,product_issue,"Escalated because retrieval found related articles but none matched specifically enough to produce a grounded, safe direct reply without risking a wrong answer.",0.85
+"i signed up using google login on hackerrank community , so i do not have a separate hackerrank password. please delete my account",,HackerRank,"Hi,
+
+We found related HackerRank support documentation (Integrations Overview), but since it did not provide a specific enough answer to resolve your request confidently, we are escalating this.
+
+A getting started with integrations specialist will follow up with more targeted guidance.",getting_started_with_integrations,escalated,product_issue,"Escalated because retrieval found related articles but none matched specifically enough to produce a grounded, safe direct reply without risking a wrong answer.",0.85
+"One of my claude conversations has some private info, i forgot to make a temporary chat, is there anything
+ else that can be done? like delete etc?",,Claude,"Based on the available Claude support documentation, Yes, when creating a subagent, you can specify which tools it has access to using the `tools` field in the configuration. In the subagent configuration file, you can either omit the tools field to inherit all tools from the main thread, or you can specify individual tools as a comma-separated list for more granular control. Learn more about this in our Claude Docs: **Subagents - Available tools**. How can we manage Claude Code costs, especially for automated workflows? For automated workflows li",claude_code,replied,product_issue,Answered from retrieved support content in Claude Code FAQ (Claude Code) because automated generation was unavailable.,0.9
+What is the name of the actor in Iron Man?,"Urgent, please help",HackerRank,"Hi,
+
+We found related HackerRank support documentation (Question Types in HackerRank Supported question types), but since it did not provide a specific enough answer to resolve your request confidently, we are escalating this.
+
+A getting started specialist will follow up with more targeted guidance.",getting_started,escalated,product_issue,"Escalated because retrieval found related articles but none matched specifically enough to produce a grounded, safe direct reply without risking a wrong answer.",0.85
+I bought Visa Traveller's Cheques from Citicorp and they were stolen in Lisbon last night. What do I do?,,Visa,"Hi,
+
+Since we could not find a matching answer in our support documentation for your specific issue, our support team will need to review this.
+
+A consumer specialist will follow up with you shortly.",consumer,escalated,product_issue,Escalated because automated generation was unavailable and retrieval did not find a strong enough support article match.,0.85
+Where can I report a lost or stolen Visa card from India?,Card stolen,Visa,"Hi,
+
+Sorry to hear you're dealing with identity theft. Here are the immediate steps to take:
+
+1. Call the number on the back of your Visa card to report the theft and lock your card immediately. Visa's Global Customer Assistance is also available 24/7 at +1 303 967 1090.
+2. Contact your card-issuing bank to dispute any unauthorised charges and request a replacement card.
+3. Place a fraud alert or credit freeze with the major credit bureaus (Equifax, Experian, TransUnion) to prevent new accounts being opened in your name.
+4. File a report with your local police and keep a copy for your records — banks often require this.
+
+If you need further assistance, Visa's Lost or Stolen card support page has additional guidance.",consumer_support,replied,product_issue,"The Visa consumer support corpus covers identity-theft and lost/stolen-card cases with specific guidance on locking cards, disputing charges, and contacting Visa's 24/7 Global Customer Assistance.",0.9
+Thank you for helping me,,Unknown,"Hi,
+
+Thank you for reaching out. To help you effectively, could you please provide more details? 
+
+Specifically:
+- Which product or service is this about? (HackerRank, Claude, Visa, etc.)
+- What exactly is not working or what do you need help with?
+- Any error messages or steps you've already tried?
+
+With those details we can route you to the right team immediately.",general_support,replied,product_issue,"Ticket is too vague to retrieve a meaningful answer (no company, very short issue text). Responding with a clarification request rather than escalating or guessing.",0.6
