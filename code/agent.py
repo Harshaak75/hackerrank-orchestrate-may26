@@ -292,17 +292,18 @@ def _normalize_product_area(value: str, fallback: str, *, issue: str = "", subje
             return canonical
     # Keyword-driven fallback from ticket text
     text = f"{subject} {issue}".lower()
+    tokens = set(re.findall(r"[a-z0-9]+", text))
     if any(kw in text for kw in {"login", "sign in", "password", "cannot log", "can't log"}):
         return "account_access"
     if any(kw in text for kw in {"payment", "billing", "charge", "refund", "invoice", "subscription"}):
         return "billing"
-    if any(kw in text for kw in {"submit", "editor", "ui", "button", "screen", "interface", "display"}):
+    if tokens & {"submit", "editor", "ui", "button", "screen", "interface", "display", "apply"}:
         return "platform_issue"
-    if any(kw in text for kw in {"test", "submission", "code", "assessment", "challenge"}):
+    if tokens & {"test", "submission", "submissions", "code", "assessment", "challenge"}:
         return "testing"
     if any(kw in text for kw in {"fraud", "stolen", "hacked", "unauthorized", "security"}):
         return "account_security"
-    if any(kw in text for kw in {"card", "visa", "chargeback", "merchant", "dispute"}):
+    if tokens & {"card", "visa", "chargeback", "merchant", "dispute", "cash", "atm"}:
         return "payments"
     # Last resort: use fallback or generic troubleshooting
     fallback_normalized = re.sub(r"[^a-z0-9]+", "_", (fallback or "").strip().lower()).strip("_")
@@ -400,7 +401,8 @@ def _fallback_from_retrieval(
             "product_area": product_area,
             "response": (
                 f"Hi,\n\n{apology}"
-                f"I want to make sure you get the best possible help with this issue. I am escalating your request directly to our {product_area.replace('_', ' ')} specialists so they can investigate further and provide you with a resolution."
+                "I want to make sure you get the best possible help with this issue. "
+                "I am escalating your request to our support team so they can investigate further and provide you with a resolution."
             ),
             "justification": (
                 f"[FALLBACK: {failure_reason}] Escalated to human support because no clear documentation was found to automatically resolve the issue with high confidence."
@@ -416,7 +418,8 @@ def _fallback_from_retrieval(
             "product_area": product_area,
             "response": (
                 f"Hi,\n\n{apology}"
-                f"I want to make sure you get the exact steps you need. I'm routing your ticket directly to a {product_area.replace('_', ' ')} specialist who will follow up with you shortly."
+                "I want to make sure you get the exact steps you need. "
+                "I'm routing your ticket to our support team for a more detailed review."
             ),
             "justification": (
                 f"[FALLBACK: {failure_reason}] Escalated because retrieval found related articles but none matched specifically enough to produce a confident direct response."
@@ -433,7 +436,7 @@ def _fallback_from_retrieval(
             "response": (
                 f"Hi,\n\n{apology}"
                 f"Since this request involves account-specific details, our support team must handle it directly. "
-                f"A {product_area.replace('_', ' ')} specialist will follow up with you shortly to assist further."
+                "A member of our support team will follow up with you shortly to assist further."
             ),
             "justification": (
                 f"[FALLBACK: {failure_reason}] Escalated because this request involves account-specific, billing, or sensitive details."

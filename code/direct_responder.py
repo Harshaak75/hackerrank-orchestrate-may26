@@ -48,7 +48,22 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
 
     if company == "Claude":
         if (
-            ("workspace" in text and any(kw in text for kw in {"not loading", "won't load", "is not loading", "loading at all"}))
+            (
+                "workspace" in text
+                and any(
+                    kw in text
+                    for kw in {
+                        "not loading",
+                        "won't load",
+                        "is not loading",
+                        "loading at all",
+                        "keeps spinning",
+                        "never fully loads",
+                        "fully loads",
+                        "spinner",
+                    }
+                )
+            )
             and any(kw in text for kw in {"cancel", "cancellation", "subscription", "billing"})
         ):
             return DirectResponse(
@@ -67,7 +82,7 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
                 request_type="product_issue",
             )
 
-        if "aws bedrock" in text or "amazon bedrock" in text:
+        if "bedrock" in text:
             return DirectResponse(
                 status="replied",
                 product_area="amazon_bedrock",
@@ -121,7 +136,7 @@ def try_direct_response(issue: str, subject: str, company: str) -> DirectRespons
         if any(kw in text for kw in {
             "not working", "stopped working", "all requests", "requests are failing",
             "failing", "not responding", "completely stopped", "service down",
-        }) and not ("aws bedrock" in text or "amazon bedrock" in text):
+        }) and "bedrock" not in text:
             return DirectResponse(
                 status="replied",
                 product_area="troubleshooting",
