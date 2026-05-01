@@ -199,6 +199,43 @@ def build_prompt(issue: str, subject: str, company: str, retrieval_result: Retri
     return "\n\n".join(prompt_parts)
 
 
+def build_retry_prompt(
+    issue: str,
+    subject: str,
+    company: str,
+    retrieval_result: RetrievalResult,
+    prior_response: dict,
+    prior_confidence: float,
+) -> str:
+    """Build a stronger follow-up prompt when the first LLM attempt had low confidence.
+
+    The retry prompt includes the prior (low-confidence) response so the model
+    can see what it produced and be pushed to commit to a clear decision.
+    """
+    base = build_prompt(
+        issue=issue,
+        subject=subject,
+        company=company,
+        retrieval_result=retrieval_result,
+    )
+    prior_summary = (
+        f"status={prior_response.get('status', '?')}, "
+        f"product_area={prior_response.get('product_area', '?')}, "
+        f"confidence_score={prior_confidence:.2f}"
+    )
+    retry_instructions = (
+        "RETRY INSTRUCTION: Your previous response had LOW CONFIDENCE ({score:.2f} < 0.70). "
+        "Prior attempt summary: {summary}.\n"
+        "You MUST now:\n"
+        "1. Commit to a single definitive status: 'replied' OR 'escalated'. Do NOT hedge.\n"
+        "2. Choose the most specific product_area from the canonical list.\n"
+        "3. Write a complete, actionable response (at least 2 sentences).\n"
+        "4. Set confidence_score >= 0.80 only if you are genuinely confident.\n"
+        "If the corpus has no relevant information, choose 'escalated' with a clear justification."
+    ).format(score=prior_confidence, summary=prior_summary)
+    return base + "\n\n" + retry_instructions
+
+
 def _extract_json_block(text: str) -> dict[str, str]:
     normalized = text.strip()
     if normalized.startswith("```"):
@@ -637,3 +674,95 @@ def generate_agent_response(
         issue=issue,
         subject=subject,
     )
+
+
+LOW_CONFIDENCE_THRESHOLD = 0.70
+
+
+def _run_single_llm_call(client, prompt: str) -> dict:
+    """Execute one LLM content-generation call and return the parsed JSON dict."""
+    _respect_request_spacing()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config={
+            "temperature": 0.0,
+            "response_mime_type": "application/json",
+            "response_schema": RESPONSE_SCHEMA,
+        },
+    )
+    return _extract_json_block(response.text)
+
+
+def generate_agent_response_with_retry(
+    *,
+    issue: str,
+    subject: str,
+    company: str,
+    retrieval_result: RetrievalResult,
+    intents: list[str] = None,
+    is_frustrated: bool = False,
+) -> dict[str, str]:
+    """Wraps generate_agent_response with a low-confidence auto-retry.
+
+    If the first LLM pass returns confidence_score < LOW_CONFIDENCE_THRESHOLD
+    (0.70), a second pass is triggered with a stricter, more directive prompt.
+    The result with the higher confidence score wins.
+    """
+    first_result = generate_agent_response(
+        issue=issue,
+        subject=subject,
+        company=company,
+        retrieval_result=retrieval_result,
+        intents=intents,
+        is_frustrated=is_frustrated,
+    )
+
+    first_confidence = float(first_result.get("confidence_score", 1.0))
+
+    # Only retry if the LLM actually ran (not a pre-check or fallback path)
+    if first_confidence >= LOW_CONFIDENCE_THRESHOLD:
+        return first_result  # Already confident — no retry needed
+
+    # ── Low confidence: rebuild with a stronger prompt ──────────────────────
+    if not GEMINI_API_KEY:
+        return first_result  # Can't retry without the model
+    try:
+        from google import genai
+    except ImportError:
+        return first_result
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    retry_prompt = build_retry_prompt(
+        issue=issue,
+        subject=subject,
+        company=company,
+        retrieval_result=retrieval_result,
+        prior_response=first_result,
+        prior_confidence=first_confidence,
+    )
+
+    try:
+        retry_parsed = _run_single_llm_call(client, retry_prompt)
+        retry_result = _normalize_result(
+            retry_parsed,
+            fallback_product_area=retrieval_result.best_product_area,
+            fallback_request_type=first_result.get("request_type", "product_issue"),
+            issue=issue,
+            subject=subject,
+        )
+        retry_confidence = float(retry_result.get("confidence_score", 0.0))
+
+        # Tag the justification so evaluators can see a retry occurred
+        retry_result["justification"] = (
+            f"[AUTO-RETRY: initial confidence={first_confidence:.2f}] "
+            + retry_result.get("justification", "")
+        )
+
+        # Pick whichever result is more confident
+        if retry_confidence >= first_confidence:
+            return retry_result
+    except Exception:
+        pass  # Retry failed silently — return original
+
+    return first_result

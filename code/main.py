@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from agent import generate_agent_response, fallback_agent_response, infer_request_type, _normalize_product_area
+from agent import generate_agent_response, generate_agent_response_with_retry, fallback_agent_response, infer_request_type, _normalize_product_area
 from classifier import detect_company
 from config import INPUT_CSV_PATH, OUTPUT_COLUMNS, OUTPUT_CSV_PATH
 from direct_responder import try_direct_response
@@ -15,6 +15,9 @@ from multi_intent import extract_intents
 from privacy_filter import redact_pii
 from sentiment_analyzer import is_highly_frustrated
 from telemetry_logger import init_telemetry, log_trace
+from feedback_collector import attach_feedback_columns
+from response_cache import cache_lookup, cache_store, cache_stats
+from language_detector import detect_language, non_english_escalation_response
 import time
 
 
@@ -106,6 +109,22 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
     intents = extract_intents(f"{subject} {issue}")
     is_frustrated = is_highly_frustrated(f"{subject} {issue}")
     
+    # ── Language Detection: skip processing for non-English ───────────────
+    lang = detect_language(f"{subject} {issue}")
+    if not lang.is_english:
+        lang_resp = non_english_escalation_response(lang, company)
+        if lang.localized_ack:
+            lang_resp["response"] = f"{lang.localized_ack}\n\n{lang_resp['response']}"
+        
+        final_result = apply_post_processing({
+            "issue": issue,
+            "subject": subject,
+            "company": company,
+            **lang_resp
+        }, intents, is_frustrated)
+        log_trace({"ticket_index": index, "subject": subject, "path": f"LanguageDetector -> {lang.name}", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+        return final_result
+        
     safety_result = evaluate_safety(issue=issue, subject=subject, company=company)
 
     if safety_result.is_dangerous:
@@ -143,6 +162,18 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
         log_trace({"ticket_index": index, "subject": subject, "path": "DirectResponder -> Template", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
         return final_result
 
+    # ── Cache lookup: skip retrieval + LLM for near-duplicate tickets ─────────
+    cached = cache_lookup(issue=issue, subject=subject, company=company)
+    if cached is not None:
+        final_result = apply_post_processing({
+            "issue": issue,
+            "subject": subject,
+            "company": company,
+            **cached,
+        }, intents, is_frustrated)
+        log_trace({"ticket_index": index, "subject": subject, "path": "Cache Hit -> Skipped LLM", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+        return final_result
+
     retrieval_result = retrieve_relevant_passages(issue=issue, subject=subject, company=company)
     resolved_company = company if company != "Unknown" else retrieval_result.company
 
@@ -169,7 +200,7 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
         log_trace({"ticket_index": index, "subject": subject, "path": "Retrieval -> NoMatch -> Fallback", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
         return final_result
 
-    agent_result = generate_agent_response(
+    agent_result = generate_agent_response_with_retry(
         issue=issue,
         subject=subject,
         company=resolved_company,
@@ -204,7 +235,11 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
         "justification": agent_result["justification"],
         "confidence_score": agent_result["confidence_score"],
     }, intents, is_frustrated)
-    
+
+    # Store successful LLM results in cache for future near-duplicates
+    if final_result.get("status") in {"replied", "escalated"}:
+        cache_store(issue=issue, subject=subject, company=resolved_company, result=final_result)
+
     log_trace({"ticket_index": index, "subject": subject, "path": path_taken, "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
     return final_result
 
@@ -218,9 +253,15 @@ def run_pipeline(input_csv_path: Path, output_csv_path: Path) -> None:
     results = [process_row(index + 1, len(tickets), row) for index, row in tickets.iterrows()]
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(results).reindex(columns=OUTPUT_COLUMNS).to_csv(output_csv_path, index=False)
+    out_df = pd.DataFrame(results).reindex(columns=OUTPUT_COLUMNS)
+    out_df = attach_feedback_columns(out_df)  # adds blank feedback_score / feedback_comment
+    out_df.to_csv(output_csv_path, index=False)
 
     print(f"Done. {output_csv_path.name} saved.")
+    print(f"\nTo submit feedback for ticket #2 (score 1–5):\n"
+          f"  python3 feedback_collector.py submit --ticket_id 2 --score 5 --comment 'Resolved instantly!'")
+    print(f"To view the CSAT report:\n"
+          f"  python3 feedback_collector.py report")
 
 
 def parse_args() -> argparse.Namespace:
