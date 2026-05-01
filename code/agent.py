@@ -59,6 +59,31 @@ OUT_OF_SCOPE_KEYWORDS = {
     "display all the rules",
     "internal rules",
 }
+# Words that suggest a completely general-knowledge / off-topic question
+GENERAL_KNOWLEDGE_SIGNALS = {
+    "capital of",
+    "who is the president",
+    "what is the population",
+    "what year was",
+    "who invented",
+    "how far is",
+    "what language do they speak",
+    "tell me a joke",
+    "write a poem",
+    "write me a story",
+    "what is 2 + 2",
+    "solve this math",
+    "translate",
+}
+# Words that anchor a ticket to a real support context
+SUPPORT_ANCHOR_WORDS = {
+    "account", "login", "password", "payment", "billing", "subscription",
+    "test", "submission", "code", "editor", "workspace", "certificate",
+    "visa", "card", "claude", "hackerrank", "error", "bug", "crash",
+    "refund", "charge", "interview", "hiring", "candidate", "employer",
+    "feature", "api", "data", "report", "security", "access", "permission",
+    "download", "upload", "plugin", "dashboard", "settings", "profile",
+}
 _LAST_REQUEST_AT = 0.0
 _MODEL_DISABLED_REASON = ""
 GENERIC_ARTICLE_KEYWORDS = {
@@ -104,7 +129,24 @@ def infer_request_type(issue: str, subject: str = "") -> str:
     return "product_issue"
 
 
-def build_prompt(issue: str, subject: str, company: str, retrieval_result: RetrievalResult, intents: list[str] = None) -> str:
+def _is_completely_out_of_scope(issue: str, subject: str) -> bool:
+    """Return True if the ticket is clearly a general-knowledge question with
+    no connection to any supported product or service."""
+    import re as _re
+    text = f"{subject} {issue}".lower()
+    # If it contains ANY general-knowledge signal phrase → suspect
+    has_general_signal = any(sig in text for sig in GENERAL_KNOWLEDGE_SIGNALS)
+    if not has_general_signal:
+        return False
+    # Whole-word match for support anchors — prevent 'api' matching inside 'capital'
+    has_support_anchor = any(
+        _re.search(r"\b" + _re.escape(anchor) + r"\b", text)
+        for anchor in SUPPORT_ANCHOR_WORDS
+    )
+    return not has_support_anchor
+
+
+def build_prompt(issue: str, subject: str, company: str, retrieval_result: RetrievalResult, intents: list[str] = None, is_frustrated: bool = False) -> str:
     excerpts = []
     for index, match in enumerate(retrieval_result.matches, start=1):
         excerpts.append(
@@ -139,6 +181,13 @@ def build_prompt(issue: str, subject: str, company: str, retrieval_result: Retri
             "or pick the highest risk intent (e.g. security over general questions) to escalate."
         )
 
+    if is_frustrated:
+        prompt_parts.append(
+            "VIP URGENCY: The user is highly frustrated or upset. You MUST begin your response with "
+            "a highly empathetic and professional apology acknowledging their frustration before addressing the issue. "
+            "Note: Frustration alone does NOT require escalation. Answer normally if possible."
+        )
+
     prompt_parts.extend([
         f"Company: {company}",
         f"Subject: {subject or '(blank)'}",
@@ -165,9 +214,66 @@ def _extract_json_block(text: str) -> dict[str, str]:
         return json.loads(match.group(0))
 
 
-def _normalize_product_area(value: str, fallback: str) -> str:
+# Canonical taxonomy — any LLM-generated product_area must map into these
+_CANONICAL_AREAS = {
+    "account_access", "account_security", "billing", "payments",
+    "platform_issue", "platform_reliability", "testing",
+    "security_reporting", "troubleshooting", "out_of_scope",
+    "prompt_injection_or_abuse", "general_support",
+}
+# Explicit overrides for common LLM-hallucinated categories
+_PRODUCT_AREA_MAP: dict[str, str] = {
+    "small_business": "account_access",
+    "hackerrank_ai": "troubleshooting",
+    "hackerrank_ai_tools": "troubleshooting",
+    "release_notes": "platform_issue",
+    "getting_started": "troubleshooting",
+    "getting_started_with_claude": "troubleshooting",
+    "get_started_with_claude": "troubleshooting",
+    "glossary": "troubleshooting",
+    "general": "troubleshooting",
+    "general_support": "troubleshooting",
+    "test_reports": "testing",
+    "tests": "testing",
+    "credit_card": "payments",
+    "career": "general_support",
+    "visa_glossary": "troubleshooting",
+    "introduction": "troubleshooting",
+    "index": "troubleshooting",
+}
+
+
+def _normalize_product_area(value: str, fallback: str, *, issue: str = "", subject: str = "") -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", (value or "").strip().lower()).strip("_")
-    return normalized or fallback
+    # Direct explicit override
+    if normalized in _PRODUCT_AREA_MAP:
+        return _PRODUCT_AREA_MAP[normalized]
+    # Already canonical → keep it
+    if normalized in _CANONICAL_AREAS:
+        return normalized
+    # Partial-prefix override (e.g. 'getting_started_with_visa' → 'troubleshooting')
+    for bad_prefix, canonical in _PRODUCT_AREA_MAP.items():
+        if normalized.startswith(bad_prefix):
+            return canonical
+    # Keyword-driven fallback from ticket text
+    text = f"{subject} {issue}".lower()
+    if any(kw in text for kw in {"login", "sign in", "password", "cannot log", "can't log"}):
+        return "account_access"
+    if any(kw in text for kw in {"payment", "billing", "charge", "refund", "invoice", "subscription"}):
+        return "billing"
+    if any(kw in text for kw in {"submit", "editor", "ui", "button", "screen", "interface", "display"}):
+        return "platform_issue"
+    if any(kw in text for kw in {"test", "submission", "code", "assessment", "challenge"}):
+        return "testing"
+    if any(kw in text for kw in {"fraud", "stolen", "hacked", "unauthorized", "security"}):
+        return "account_security"
+    if any(kw in text for kw in {"card", "visa", "chargeback", "merchant", "dispute"}):
+        return "payments"
+    # Last resort: use fallback or generic troubleshooting
+    fallback_normalized = re.sub(r"[^a-z0-9]+", "_", (fallback or "").strip().lower()).strip("_")
+    if fallback_normalized in _CANONICAL_AREAS:
+        return fallback_normalized
+    return "troubleshooting"
 
 
 def _sanitize_excerpt(text: str) -> str:
@@ -231,7 +337,7 @@ def _fallback_from_retrieval(
     if intents is None:
         intents = []
     top_match = retrieval_result.matches[0] if retrieval_result.matches else None
-    product_area = retrieval_result.best_product_area or company.lower()
+    product_area = retrieval_result.best_product_area or "troubleshooting"
     
     text = f"{subject} {issue}".lower()
     if any(kw in text for kw in {"payment", "billing", "money", "refund", "charge", "order id"}):
@@ -252,13 +358,14 @@ def _fallback_from_retrieval(
             "product_area": product_area,
             "response": (
                 "Hi,\n\n"
+                "Here are some general troubleshooting steps you can try: clearing your cache, checking your network connection, or refreshing the page. "
                 "Since we could not find a matching answer in our support documentation "
                 "for your specific issue, our support team will need to review this.\n\n"
                 f"A {product_area.replace('_', ' ')} specialist will follow up with you shortly."
             ),
             "justification": (
                 "Escalated to human support because no clear documentation was found "
-                "to automatically resolve the issue with high confidence."
+                "to automatically resolve the issue with high confidence. Provided general troubleshooting guidance."
                 + (f" Handled multiple intents: {', '.join(intents)} (prioritized highest risk)." if len(intents) > 1 else "")
             ),
             "request_type": request_type,
@@ -272,13 +379,14 @@ def _fallback_from_retrieval(
             "product_area": product_area,
             "response": (
                 "Hi,\n\n"
+                "As a first step, we recommend checking the standard UI elements, clearing your browser cache, or refreshing the page.\n\n"
                 f"We found related {company} support documentation ({top_title}), but since it did not "
                 "provide a specific enough answer to resolve your request confidently, we are escalating this.\n\n"
                 f"A {product_area.replace('_', ' ')} specialist will follow up with more targeted guidance."
             ),
             "justification": (
                 "Escalated because retrieval found related articles but none matched specifically "
-                "enough to produce a confident direct response safely."
+                "enough to produce a confident direct response safely. Provided generic guidance first."
                 + (f" Handled multiple intents: {', '.join(intents)} (prioritized highest risk)." if len(intents) > 1 else "")
             ),
             "request_type": request_type,
@@ -347,12 +455,17 @@ def _respect_request_spacing() -> None:
     _LAST_REQUEST_AT = time.monotonic()
 
 
-def _normalize_result(result: dict[str, str], fallback_product_area: str, fallback_request_type: str) -> dict[str, str]:
+def _normalize_result(result: dict[str, str], fallback_product_area: str, fallback_request_type: str, *, issue: str = "", subject: str = "") -> dict[str, str]:
     status = str(result.get("status", "")).strip().lower()
     request_type = str(result.get("request_type", "")).strip().lower()
     response = str(result.get("response", "")).strip()
     justification = str(result.get("justification", "")).strip()
-    product_area = _normalize_product_area(str(result.get("product_area", "")), fallback_product_area)
+    product_area = _normalize_product_area(
+        str(result.get("product_area", "")),
+        fallback_product_area,
+        issue=issue,
+        subject=subject,
+    )
     
     try:
         confidence_score = float(result.get("confidence_score", 1.0))
@@ -390,6 +503,7 @@ def fallback_agent_response(
     request_type: str,
     failure_reason: str,
     intents: list[str] = None,
+    is_frustrated: bool = False,
 ) -> dict[str, str]:
     return _fallback_from_retrieval(
         issue=issue,
@@ -409,11 +523,55 @@ def generate_agent_response(
     company: str,
     retrieval_result: RetrievalResult,
     intents: list[str] = None,
+    is_frustrated: bool = False,
 ) -> dict[str, str]:
     global _MODEL_DISABLED_REASON
     if intents is None:
         intents = []
     request_type = infer_request_type(issue=issue, subject=subject)
+
+    # ── Out-of-scope guard ───────────────────────────────────────────────────
+    if _is_completely_out_of_scope(issue=issue, subject=subject):
+        return {
+            "status": "replied",
+            "product_area": "out_of_scope",
+            "response": (
+                "Thank you for reaching out. Unfortunately, this question falls outside "
+                "the scope of our customer support service, which is limited to "
+                f"{company or 'product'}-related issues such as account access, billing, "
+                "technical problems, and platform features.\n\n"
+                "If you have a support question, we are happy to help!"
+            ),
+            "justification": "Detected as a general-knowledge or off-topic question with no connection to any supported product or service. Replied with scope clarification.",
+            "request_type": "invalid",
+            "confidence_score": 0.98,
+        }
+
+    # ── Common UI / login pre-checks — reply directly without LLM ──────────
+    text_lower = f"{subject} {issue}".lower()
+    if any(kw in text_lower for kw in {
+        "cannot login", "can't login", "can't log in", "cannot log in",
+        "invalid password", "forgot password", "reset password",
+        "sign in problem", "sign in issue",
+    }):
+        return {
+            "status": "replied",
+            "product_area": "account_access",
+            "response": (
+                "Hi,\n\n"
+                "For login issues, please try the following steps:\n"
+                "1. Click 'Forgot Password' on the login page to reset your password via email.\n"
+                "2. Clear your browser cache and cookies, then try again.\n"
+                "3. Try a different browser or incognito mode.\n"
+                "4. Ensure you are using the correct email address for your account.\n\n"
+                "If you continue to have trouble after these steps, please let us know and a "
+                "support specialist will assist you directly."
+            ),
+            "justification": "Identified as a standard login/password issue. Replied with self-service troubleshooting steps to avoid unnecessary escalation.",
+            "request_type": "product_issue",
+            "confidence_score": 0.95,
+        }
+
     fallback = lambda reason: fallback_agent_response(
         issue=issue,
         subject=subject,
@@ -422,6 +580,7 @@ def generate_agent_response(
         request_type=request_type,
         failure_reason=reason,
         intents=intents,
+        is_frustrated=is_frustrated,
     )
 
     if _MODEL_DISABLED_REASON:
@@ -448,6 +607,7 @@ def generate_agent_response(
                     company=company,
                     retrieval_result=retrieval_result,
                     intents=intents,
+                    is_frustrated=is_frustrated,
                 ),
                 config={
                     "temperature": 0.0,
@@ -474,4 +634,6 @@ def generate_agent_response(
         parsed,
         fallback_product_area=retrieval_result.best_product_area,
         fallback_request_type=request_type,
+        issue=issue,
+        subject=subject,
     )

@@ -57,6 +57,10 @@ DANGER_KEYWORDS = [
     "delete all files from the system",
     # Financial fraud / card security
     "stolen card",
+    "stolen",
+    "hacked",
+    "unauthorized",
+    "unauthorised",
     "fraud",
     "chargeback",
     "bank account",
@@ -64,6 +68,8 @@ DANGER_KEYWORDS = [
     "pin number",
     # Unauthorized account access
     "password reset for someone else",
+    "coworker password",
+    "their password",
     "restore my access immediately",
     "not the workspace owner",
     "not the owner",

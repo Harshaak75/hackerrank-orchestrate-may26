@@ -13,6 +13,7 @@ class SafetyResult:
     request_type: str
     response: str = ""  # Contextual escalation message for the user
     justification: str = ""
+    status: str = "escalated"
     confidence_score: float = 1.0
 
 
@@ -43,9 +44,11 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
             product_area="",
             request_type="",
             response="",
+            status="replied",
         )
 
     # Determine product_area (specific, not just company name)
+    status = "escalated"
     if any(kw in text for kw in {"fraud", "stolen card", "chargeback", "cvv", "pin number"}) \
             or "urgent_visa_refund_demand" in matched_keywords:
         product_area = "payments"
@@ -73,6 +76,18 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
                 "Our payments support team is also being alerted and will follow up with you."
             )
             justification = "Escalated due to highly sensitive financial security concern (fraud/stolen card) requiring immediate banking intervention."
+    elif any(kw in text for kw in {"coworker password", "their password", "colleague password"}):
+        product_area = "account_security"
+        response = (
+            "Hi,\n\n"
+            "Accessing another person's account credentials without their explicit consent is not permitted "
+            "under our security policy and may violate applicable laws.\n\n"
+            "If your colleague has left the company and you need to transfer their data or access, "
+            "please have your workspace administrator submit an official account transfer or deactivation request. "
+            "Our team will verify authorization and assist accordingly."
+        )
+        justification = "Denied access request: requesting another user's password is a security violation. Directed to admin-led account transfer process."
+        status = "escalated"
     elif any(
         kw in text
         for kw in {
@@ -98,19 +113,29 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
         justification = "Escalated due to explicit prompt injection or system abuse terms detected by the safety gate."
     elif any(kw in text for kw in {"security vulnerability", "bug bounty"}):
         product_area = "security_reporting"
+        email = "security@anthropic.com" if company and company.lower() == "claude" else f"security@{company.lower().replace(' ', '')}.com"
         response = (
             "Thank you for flagging a potential security issue. Our security team will review your report. "
-            "For responsible disclosure, please submit details through Anthropic's official security "
-            "reporting channel at security@anthropic.com."
+            f"For responsible disclosure, please submit details through our official security "
+            f"reporting channel at {email}."
         )
         justification = "Escalated to the security team due to the disclosure of a potential security vulnerability or bug bounty."
+        status = "escalated"
     elif "site is down" in text or "none of the pages are accessible" in text:
         product_area = "platform_reliability"
         response = (
             "We're sorry you're experiencing access issues. Our engineering team monitors platform status "
             "continuously. Please check our status page for real-time updates on any active incidents."
         )
-        justification = "Escalated due to reports of a severe platform outage or major reliability incident."
+        justification = "Answered directly with platform status guidance."
+        status = "replied"
+    elif any(kw in text for kw in {"stolen", "hacked", "unauthorized", "unauthorised"}):
+        product_area = "account_security"
+        response = (
+            "This request involves high-risk security concerns. We are escalating this "
+            "to our specialized security team for immediate review."
+        )
+        justification = "Escalated due to high-risk security or account takeover concern. Directing to security team."
     elif any(kw in text for kw in {
         "ignore previous instructions", "system prompt", "developer message",
         "reveal hidden prompt", "bypass safety", "disable guardrails",
@@ -121,6 +146,7 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
             "This request cannot be processed as it falls outside the scope of customer support."
         )
         justification = "Escalated due to suspected malicious exploit or advanced jailbreak attempt."
+        status = "escalated"
     else:
         product_area = company.lower().replace(" ", "_") if company else "safety_review"
         response = (
@@ -128,6 +154,7 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
             "A specialist will follow up with you shortly."
         )
         justification = f"Escalated by the safety gate because the ticket includes high-risk terms: {', '.join(matched_keywords)}."
+        status = "escalated"
 
     # Determine request_type
     if any(kw in text for kw in {
@@ -148,4 +175,5 @@ def evaluate_safety(issue: str, subject: str = "", company: str = "") -> SafetyR
         request_type=request_type,
         response=response,
         justification=justification,
+        status=status,
     )

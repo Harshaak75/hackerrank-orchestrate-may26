@@ -5,13 +5,17 @@ from pathlib import Path
 
 import pandas as pd
 
-from agent import generate_agent_response, fallback_agent_response, infer_request_type
+from agent import generate_agent_response, fallback_agent_response, infer_request_type, _normalize_product_area
 from classifier import detect_company
 from config import INPUT_CSV_PATH, OUTPUT_COLUMNS, OUTPUT_CSV_PATH
 from direct_responder import try_direct_response
 from retriever import retrieve_relevant_passages
 from safety_gate import evaluate_safety
 from multi_intent import extract_intents
+from privacy_filter import redact_pii
+from sentiment_analyzer import is_highly_frustrated
+from telemetry_logger import init_telemetry, log_trace
+import time
 
 
 def normalize_cell(value: object) -> str:
@@ -20,7 +24,7 @@ def normalize_cell(value: object) -> str:
     return str(value).strip()
 
 
-def build_escalation_row(
+def build_gate_row(
     *,
     issue: str,
     subject: str,
@@ -29,6 +33,7 @@ def build_escalation_row(
     response: str,
     justification: str,
     request_type: str,
+    status: str = "escalated",
     confidence_score: float = 1.0,
 ) -> dict[str, str]:
     return {
@@ -37,19 +42,28 @@ def build_escalation_row(
         "company": company,
         "response": response,
         "product_area": product_area,
-        "status": "escalated",
+        "status": status,
         "request_type": request_type,
         "justification": justification,
         "confidence_score": confidence_score,
     }
 
 
-def apply_post_processing(result: dict[str, str], intents: list[str]) -> dict[str, str]:
+def apply_post_processing(result: dict[str, str], intents: list[str], is_frustrated: bool = False) -> dict[str, str]:
     """Applies global confidence scoring rules and multi-intent logging to any generated result row."""
     status = result.get("status", "")
     justification = result.get("justification", "")
-    product_area = result.get("product_area", "")
-    
+    response = result.get("response", "")
+
+    # ── Central product_area normalization (runs on EVERY path) ───────────────
+    raw_area = result.get("product_area", "")
+    issue = result.get("issue", "")
+    subject = result.get("subject", "")
+    result["product_area"] = _normalize_product_area(
+        raw_area, raw_area, issue=issue, subject=subject
+    )
+    product_area = result["product_area"]
+
     if status == "escalated":
         result["confidence_score"] = 0.85
     elif product_area == "general_support" or justification.startswith("Ticket is too vague"):
@@ -63,21 +77,34 @@ def apply_post_processing(result: dict[str, str], intents: list[str]) -> dict[st
         else:
             result["justification"] = f"{justification} Handled multiple intents: {', '.join(intents)} (combined response)."
             
+    if is_frustrated and "VIP URGENCY" not in justification:
+        if product_area not in ["prompt_injection_or_abuse", "security_reporting"]:
+            result["justification"] = f"VIP URGENCY: High frustration detected. {result['justification']}"
+            if not response.startswith("We sincerely apologize"):
+                result["response"] = f"We sincerely apologize for the frustration and inconvenience this has caused you. {response}"
+
     return result
 
 
 def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
-    issue = normalize_cell(row.get("Issue", ""))
-    subject = normalize_cell(row.get("Subject", ""))
+    start_time = time.time()
+    
+    raw_issue = normalize_cell(row.get("Issue", ""))
+    raw_subject = normalize_cell(row.get("Subject", ""))
     original_company = normalize_cell(row.get("Company", ""))
+    
+    # 🛡️ ZERO-TRUST PII REDACTION LAYER
+    issue = redact_pii(raw_issue)
+    subject = redact_pii(raw_subject)
 
     print(f"[{index}/{total_rows}] Processing ticket for subject: {subject or '(no subject)'}")
 
     company = detect_company(issue=issue, subject=subject, company_value=original_company)
     request_type = infer_request_type(issue=issue, subject=subject)
     
-    # Extract intents
+    # Extract intents & sentiment
     intents = extract_intents(f"{subject} {issue}")
+    is_frustrated = is_highly_frustrated(f"{subject} {issue}")
     
     safety_result = evaluate_safety(issue=issue, subject=subject, company=company)
 
@@ -86,7 +113,7 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
             "Thanks for contacting support. This request needs specialist review, "
             "so I am escalating it to the appropriate team."
         )
-        return apply_post_processing(build_escalation_row(
+        final_result = apply_post_processing(build_gate_row(
             issue=issue,
             subject=subject,
             company=company,
@@ -94,12 +121,15 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
             response=escalation_response,
             justification=safety_result.justification,
             request_type=safety_result.request_type or request_type,
+            status=safety_result.status,
             confidence_score=safety_result.confidence_score,
-        ), intents)
+        ), intents, is_frustrated)
+        log_trace({"ticket_index": index, "subject": subject, "path": f"SafetyGate -> {safety_result.status.capitalize()}", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+        return final_result
 
     direct_response = try_direct_response(issue=issue, subject=subject, company=company)
     if direct_response is not None:
-        return apply_post_processing({
+        final_result = apply_post_processing({
             "issue": issue,
             "subject": subject,
             "company": company,
@@ -109,29 +139,35 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
             "request_type": direct_response.request_type,
             "justification": direct_response.justification,
             "confidence_score": direct_response.confidence_score,
-        }, intents)
+        }, intents, is_frustrated)
+        log_trace({"ticket_index": index, "subject": subject, "path": "DirectResponder -> Template", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+        return final_result
 
     retrieval_result = retrieve_relevant_passages(issue=issue, subject=subject, company=company)
     resolved_company = company if company != "Unknown" else retrieval_result.company
 
     if not retrieval_result.matches or retrieval_result.matches[0].score <= 0:
-        return apply_post_processing(build_escalation_row(
+        final_result = apply_post_processing(build_gate_row(
             issue=issue,
             subject=subject,
             company=resolved_company,
-            product_area=retrieval_result.best_product_area,
+            product_area="troubleshooting",
             response=(
                 f"Thanks for reaching out to {resolved_company} support. "
-                "We could not automatically resolve this request from the available documentation, "
+                "Here are some general troubleshooting steps you can try: clearing your cache, checking your network connection, or refreshing the page. "
+                "Since we could not automatically resolve this request from the available documentation, "
                 "so a specialist will follow up with you shortly."
             ),
             justification=(
                 "Escalated because retrieval did not find any support article "
-                "match in the provided corpus for this issue."
+                "match in the provided corpus for this issue. Provided general guidance."
             ),
             request_type=request_type,
+            status="escalated",
             confidence_score=1.0,
-        ), intents)
+        ), intents, is_frustrated)
+        log_trace({"ticket_index": index, "subject": subject, "path": "Retrieval -> NoMatch -> Fallback", "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+        return final_result
 
     agent_result = generate_agent_response(
         issue=issue,
@@ -139,10 +175,13 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
         company=resolved_company,
         retrieval_result=retrieval_result,
         intents=intents,
+        is_frustrated=is_frustrated,
     )
     agent_result.setdefault("request_type", request_type)
 
+    path_taken = "Retrieval -> LLM"
     if agent_result.get("status") not in {"replied", "escalated"}:
+        path_taken = "Retrieval -> LLM_Failed -> Fallback"
         agent_result = fallback_agent_response(
             issue=issue,
             subject=subject,
@@ -151,9 +190,10 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
             request_type=request_type,
             failure_reason="Model returned an invalid status.",
             intents=intents,
+            is_frustrated=is_frustrated,
         )
 
-    return apply_post_processing({
+    final_result = apply_post_processing({
         "issue": issue,
         "subject": subject,
         "company": resolved_company,
@@ -163,10 +203,14 @@ def process_row(index: int, total_rows: int, row: pd.Series) -> dict[str, str]:
         "request_type": agent_result["request_type"],
         "justification": agent_result["justification"],
         "confidence_score": agent_result["confidence_score"],
-    }, intents)
+    }, intents, is_frustrated)
+    
+    log_trace({"ticket_index": index, "subject": subject, "path": path_taken, "latency_ms": round((time.time() - start_time)*1000, 2), "intents": intents, "is_frustrated": is_frustrated})
+    return final_result
 
 
 def run_pipeline(input_csv_path: Path, output_csv_path: Path) -> None:
+    init_telemetry()
     if not input_csv_path.exists():
         raise FileNotFoundError(f"Input CSV not found: {input_csv_path}")
 
